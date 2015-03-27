@@ -1,0 +1,100 @@
+---
+- hosts: webservers
+  remote_user: vagrant
+  sudo: true
+  tasks:
+
+  # misc packages
+   - name: install misc packages
+     yum: name={{item}} state=latest
+     with_items:
+      - git
+      - curl
+      - wget
+      - tig
+      - vim
+      - unzip
+
+  # apache
+  # 1. ensure apache(httpd) installed
+  # 2. start httpd service
+  # 3. config httpd
+  # 4. config vhosts
+   - name: ensure apache is instaled
+     yum: name=httpd state=latest
+ 
+   - name: make sure apache is running
+     action: service name=httpd state=started enabled=true
+ 
+   - name: ensure sites-available directory is present inside /etc/httpd
+     file: path=/etc/httpd/sites-available state=directory
+     notify: restart httpd
+ 
+   - name: ensure sites-enabled directory is present inside /etc/httpd
+     file: path=/etc/httpd/sites-enabled state=directory
+     notify: restart httpd
+ 
+   - name: template httpd.conf config file
+     copy: src=conf/httpd.conf dest=/etc/httpd/conf/httpd.conf
+     notify: restart httpd
+   
+   - name: template vhost conf file to sites-available
+     copy: src=conf/example.com.vhost.conf dest=/etc/httpd/sites-available/example.com.vhost.conf
+     notify: restart httpd
+ 
+   - name: create link vhost conf file to sites-enabled
+     file: src=/etc/httpd/sites-available/example.com.vhost.conf dest=/etc/httpd/sites-enabled/example.com.vhost.conf state=link   
+     notify: restart httpd
+  
+  # mysql
+  # 1. install mysql
+  # 2. config mysqld
+  # 3. add mysql user
+  # 4. create mysql database
+   - name: ensure mysql is installed
+     yum: name={{item}} state=latest
+     with_items:
+      - mysql-server
+      - mysql
+      - MySQL-python
+
+   - name: make sure httpd is running
+     action: service name=mysqld state=started enabled=true
+
+   - name: ensure conf.d directory exist
+     file: path=/etc/mysql/conf.d state=directory
+
+   - name: config mysql max connection
+     copy: src=conf/mysql_max_connections.cnf dest=/etc/mysql/conf.d/max_connections.cnf
+     notify: restart mysqld
+ 
+   - name: config mysql commandline client 
+     copy: src=conf/my.cnf dest=/home/vagrant/.my.cnf owner=vagrant group=vagrant
+
+   - name: add mysql user to user db
+     mysql_user: name=vagrant
+                 host={{item}}
+                 password=vagrant priv=*.*:ALL,GRANT
+                 login_user=root
+                 login_password=
+     with_items:
+      - '%'
+      - localhost
+   
+   - name: create new mysql databases
+     mysql_db: name={{item}}
+               state=present
+     with_items:
+      - site_development
+      - site_development_stats
+      - site_testing
+      - site_testing_stats
+
+  # handle
+  handlers:
+   - name: restart httpd
+     action: service name=httpd state=restarted
+
+   - name: restart mysqld
+     action: service name=mysqld state=restarted
+# vim:ft=ansible:
